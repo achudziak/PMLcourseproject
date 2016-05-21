@@ -1,0 +1,129 @@
+Practical Machine Learning Course Project
+=========================================
+
+*Adam Chudziak*
+
+## Summary
+
+This project is concerned about predicting the type of physical activity performed by the subject wearing special sensors. It falls in  broad category of research regarding  wearable senors such as *Fitbit* or *Nike FuelBand*. Five different types of  barbell lifts were performed. The data comes from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. The goal is to construct a model for prediction of the type of barbell lift performed. More information about the data can be found on [this website](http://groupware.les.inf.puc-rio.br/har) (section Weight Lifting Exercise Data set).
+
+We proposed some Machine Learning models for the task. The models were trained on 60% of the training data set, while remaining 40% served as a validation set. Random forest framework achieved satisfactory accuracy on the testing set and hence we propose a model based on this methodology.
+
+## Data
+
+Data used in this study can be found [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv). Also twenty testing cases used for evaluation can be found [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv). The following code downloads both data sets if they are not yet in the working directory and divides the training set into training and testing data sets.
+
+```{r, cache=TRUE}
+library(ggplot2)
+library(caret)
+library(rpart)
+library(randomForest)
+library(rattle)
+
+d1url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+d2url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+if(!file.exists("pml-training.csv")){download.file(d1url,destfile = "pml-training.csv")}
+trainData <- read.csv("pml-training.csv", na.strings = c("NA",""))
+if(!file.exists("pml-testing.csv")){download.file(d2url,destfile = "pml-testing.csv")}
+testData <- read.csv("pml-testing.csv",na.strings = c("NA",""))
+
+all.equal(colnames(trainData)[1:ncol(trainData)-1], colnames(testData)[1:ncol(testData)-1])
+
+set.seed(579)
+inTrain <- createDataPartition(trainData$classe,p=0.6,list = FALSE)
+training <- trainData[inTrain,]
+testing <- trainData[-inTrain,]
+
+rm(trainData,inTrain)
+
+str(training[,1:12])
+
+```
+
+We created data partition into a training set of almost 12 000 observations and testing set of almost 8 thousand variables. There are 160 variables and the type of physical activity performed is stored in the last variable "classe". Manually looking at the data set we notice that some variables have a lot of missing values. High number of predictors does not necessarily help prediction, thus we decided to get rid of variables which have missing values. We also drop first seven columns as they are not relevant for prediction
+
+```{r,cache=TRUE}
+toDrop <- apply(array(training),2,function(x){sum(is.na(x))>0})
+
+toDrop[1:7] <- TRUE
+
+training <- training[,!toDrop]
+testing <- testing[,!toDrop]
+testData <- testData[,!toDrop]
+```
+
+This leave us with 53 variables. The last thing is we check for variable s with low variability.
+
+```{r,cache=TRUE}
+nearZeroVar(training,saveMetrics = TRUE)
+```
+
+It turns out that the variability of the variables left is satisfactory.
+
+## Models
+
+We started modelling using  simple models such as decision trees and random forests. It turned out that we can achieve satisfactory accuracy using the latter and further investigation of more advanced or ensemble methods was not necessary.
+
+### Decision Tree
+
+The first model fitted was a decision tree.
+```{r, cache=TRUE}
+set.seed(6243)
+
+modelDecisionTree <- train(classe~., data = training, method = "rpart")
+fancyRpartPlot(modelDecisionTree$finalModel, sub = "Decision Tree")
+```
+
+Unfortunately the model has very poor accuracy, even on the training data.
+
+```{r,cache=TRUE}
+trainingPredictDT <- predict(modelDecisionTree, newdata = training)
+confusionMatrix(training$classe,trainingPredictDT)
+```
+
+The in-sample accuracy around 55% is below satisfactory and not a good prospect for out-of the sample error.
+
+### Random Forest
+
+The second model fitted was a random forest model.
+
+```{r,cache=TRUE}
+modelRF <- randomForest(y = training$classe, x = training[,1:(ncol(training)-1)], prox=TRUE, ntree = 200)
+
+trainingPredictRF <- predict(modelRF, newdata = training)
+confusionMatrix(trainingPredictRF,training$classe)
+```
+
+The accuracy on the training set is almost 100%.
+
+### Validation and out-of-sample error estimates
+
+The validation of models and estimation of out-of-sample error were performed on the testing data set comprising 40% cases of the original data set.
+
+```{r,cache=TRUE}
+testingPredictDT <- predict(modelDecisionTree, newdata = testing)
+testingPredictRF <- predict(modelRF, newdata = testing)
+```
+The statistics for Decision Tree model are below.
+```{r,cache=TRUE}
+confusionMatrix(testingPredictDT,testing$classe)
+```
+The model performs poorly - accuracy of only around 53.9% on a new data set yields a very high estimate out-of-sample error of 46.1%.
+
+The statistics for Random Forests model are below.
+```{r,cache=TRUE}
+confusionMatrix(testingPredictRF,testing$classe)
+```
+Accuracy of around 99.2% gives an estimate out-of-sample error of 0.8%. This is a satisfactory accuracy so we decided to pick this predictive model.
+
+## Closing remarks
+
+We tested two models and the second using random forests performed satisfactory on the testing set achieving 99.2% accuracy. 
+We used it for prediction in the 20 cases presented by the Instructor. 20 out of 20 predictions were accurate.
+
+### Estimation of testcases
+The following code was used for estimation of 20 test cases
+```{r,cache=TRUE}
+library(randomForest)
+testDataPredictionRF <- predict(modelRF, newdata = testData[,1:(ncol(testData)-1)])
+```
